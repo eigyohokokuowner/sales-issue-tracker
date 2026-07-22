@@ -195,7 +195,7 @@ tbody tr:hover td{background:#F0F7F3}
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
   import {
     getFirestore, collection, addDoc, onSnapshot,
-    doc, updateDoc, arrayUnion, query, orderBy, serverTimestamp
+    doc, updateDoc, deleteDoc, arrayUnion, query, orderBy, serverTimestamp
   } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
   // ▼▼▼ ここにFirebaseの設定を貼り付けてください ▼▼▼
@@ -216,7 +216,7 @@ tbody tr:hover td{background:#F0F7F3}
   window._db = db;
   window._fs = {
     collection, addDoc, onSnapshot, doc,
-    updateDoc, arrayUnion, query, orderBy, serverTimestamp
+    updateDoc, deleteDoc, arrayUnion, query, orderBy, serverTimestamp
   };
 
   // 起動時にリアルタイムリスナーを設定
@@ -661,7 +661,7 @@ function renderHeatmap(){
     html+=`<th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:${AGE_COLORS_RADAR[gi]};border-bottom:2px solid var(--border);white-space:nowrap;background:var(--bg);min-width:${colW}px">${g.split('（')[0]}<br><span style="font-weight:400;color:var(--text-muted)">${g.match(/（(.+)）/)[1]}</span></th>`;
   });
   // ギャップ列
-  html+=`<th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:2px solid var(--border);background:var(--bg);min-width:70px">ギャップ</th></tr>`;
+  html+=`<th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:2px solid var(--border);background:var(--bg);min-width:70px">ギャップ</th><th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:#DC2626;border-bottom:2px solid var(--border);background:var(--bg);min-width:60px">削除</th></tr>`;
 
   // データ行
   issues.forEach((issue,ri)=>{
@@ -682,6 +682,8 @@ function renderHeatmap(){
       }
     });
     html+=`<td style="padding:10px;text-align:center;border-bottom:1px solid var(--border-light);background:${bg};font-size:13px;font-weight:700;color:${gap?gapColor:'var(--text-muted)'}">${gap||'—'}${gap>=1.0?' ⚠':''}</td>`;
+    var did=issue._docId||issue.id;
+    html+=`<td style="padding:10px;text-align:center;border-bottom:1px solid var(--border-light);background:${bg}"><button onclick="deleteIssue('${did}')" style="background:none;border:1px solid #FCA5A5;border-radius:4px;padding:4px 10px;cursor:pointer;color:#DC2626;font-size:11px;font-weight:600">削除</button></td>`;
     html+=`</tr>`;
   });
   html+=`</table>`;
@@ -1005,6 +1007,24 @@ async function changeStatus(id,val){
     } catch(e){ console.error('ステータス更新エラー:',e); }
   } else {
     const i=issues.find(x=>x.id===id);if(i)i.status=val;
+  }
+}
+
+async function deleteIssue(id){
+  if(!confirm('この課題を削除しますか？\nこの操作は取り消せません。')) return;
+  if(window._db && window._fs){
+    const issue=issues.find(i=>i.id===id||i._docId===id);
+    if(!issue)return;
+    const docId=issue._docId||id;
+    try{
+      await window._fs.deleteDoc(window._fs.doc(window._db,'issues',docId));
+    } catch(e){
+      console.error('削除エラー:',e);
+      alert('削除に失敗しました。');
+    }
+  } else {
+    issues=issues.filter(i=>i.id!==id);
+    renderAdmin();
   }
 }
 
