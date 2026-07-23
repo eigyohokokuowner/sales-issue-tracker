@@ -190,15 +190,10 @@ tbody tr:hover td{background:#F0F7F3}
 .matrix-dot{position:absolute;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;cursor:pointer;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,.18);transition:transform .15s,box-shadow .15s;border:2px solid #fff}
 .matrix-dot:hover{transform:translate(-50%,-50%) scale(1.25);box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:5}
 </style>
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-  import {
-    getFirestore, collection, addDoc, onSnapshot,
-    doc, updateDoc, deleteDoc, arrayUnion, query, orderBy, serverTimestamp
-  } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-
-  // ▼▼▼ ここにFirebaseの設定を貼り付けてください ▼▼▼
+<!-- Firebase SDK (グローバル版) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
   const firebaseConfig = {
     apiKey:            "AIzaSyCFuJrYGAJd50t2s4wEo2X15vze8T8cYRg",
     authDomain:        "sales-issue-tracker-7b66a.firebaseapp.com",
@@ -207,33 +202,30 @@ tbody tr:hover td{background:#F0F7F3}
     messagingSenderId: "652861794425",
     appId:             "1:652861794425:web:714d675e84270259d94ca8"
   };
-  // ▲▲▲ ここまで ▲▲▲
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
-
-  // Firestoreをグローバルに公開（既存JSから呼べるようにする）
+  // グローバルに公開
   window._db = db;
-  window._fs = {
-    collection, addDoc, onSnapshot, doc,
-    updateDoc, deleteDoc, arrayUnion, query, orderBy, serverTimestamp
-  };
+  window._dbReady = true;
 
-  // 起動時にリアルタイムリスナーを設定
-  window.addEventListener('load', () => {
-    const q = query(collection(db, 'issues'), orderBy('createdAt', 'asc'));
-    onSnapshot(q, (snapshot) => {
-      // Firestoreのデータでissues配列を同期
-      window.issues = snapshot.docs.map(d => ({ _docId: d.id, ...d.data() }));
-      // 現在表示中の画面を再描画
-      const active = document.querySelector('.view.active');
-      if (!active) return;
-      const id = active.id;
-      if (id === 'view-dash')   window.renderDash && window.renderDash();
-      if (id === 'view-list')   window.renderList && window.renderList();
-      if (id === 'view-eval')   window.renderEval && window.renderEval();
-      if (id === 'view-admin')  window.renderAdmin && window.renderAdmin();
-      window.updateBadge && window.updateBadge();
+  // リアルタイムリスナー（DOMロード後に設定）
+  document.addEventListener('DOMContentLoaded', function(){
+    db.collection('issues').orderBy('createdAt', 'asc').onSnapshot(function(snapshot){
+      window.issues = snapshot.docs.map(function(d){
+        return Object.assign({ _docId: d.id }, d.data());
+      });
+      // 現在の画面を再描画
+      var active = document.querySelector('.view.active');
+      if(!active) return;
+      var id = active.id;
+      if(id === 'view-dash'  && window.renderDash)  window.renderDash();
+      if(id === 'view-list'  && window.renderList)  window.renderList();
+      if(id === 'view-eval'  && window.renderEval)  window.renderEval();
+      if(id === 'view-admin' && window.renderAdmin) window.renderAdmin();
+      if(window.updateBadge) window.updateBadge();
+    }, function(err){
+      console.error('Firestore読み込みエラー:', err);
     });
   });
 </script>
@@ -771,7 +763,7 @@ function setScore(key,val){
   document.querySelectorAll(`#p-${key} .pill`).forEach((p,i)=>p.classList.toggle('on',i<val));
 }
 
-function submitIssue(){
+async function submitIssue(){
   const name=document.getElementById('f-name').value.trim();
   const type=document.getElementById('f-type').value;
   const cat=document.getElementById('f-cat').value;
@@ -780,13 +772,29 @@ function submitIssue(){
   if(!type){alert('課題タイプを選択してください');return;}
   if(!cat){alert('カテゴリを選択してください');return;}
   if(!age){alert('年齢層を選択してください');return;}
-  const id=String(nextId++).padStart(3,'0');
-  issues.push({id,name,type,cat,age,
+  const newIssue={
+    name,type,cat,age,
     ideal:document.getElementById('f-ideal').value,
     current:document.getElementById('f-current').value,
     action:document.getElementById('f-action').value,
     imp:S.imp||1,eff:S.eff||1,urg:S.urg||1,
-    status:'未着手',evals:[]});
+    status:'未着手',
+    evals:[],
+    createdAt: window._db ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString()
+  };
+  if(window._db){
+    try{
+      await window._db.collection('issues').add(newIssue);
+    } catch(e){
+      console.error('Firestore保存エラー:',e);
+      alert('保存に失敗しました。');
+      return;
+    }
+  } else {
+    const id=String(issues.length+1).padStart(3,'0');
+    issues.push(Object.assign({id},newIssue,{evals:[]}));
+    renderDash(); renderList(); updateBadge();
+  }
   ['f-name','f-ideal','f-current','f-action'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('f-type').value='';
   document.getElementById('f-cat').value='';
@@ -794,7 +802,6 @@ function submitIssue(){
   S.imp=S.eff=S.urg=0;
   ['imp','eff','urg'].forEach(k=>document.querySelectorAll(`#p-${k} .pill`).forEach(p=>p.classList.remove('on')));
   const t=document.getElementById('form-toast');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);
-  updateBadge();
 }
 
 function updateBadge(){
@@ -970,16 +977,14 @@ async function submitEval(id){
   if(!age){alert('年齢層を選択してください');return;}
   const evalData={...s, age};
 
-  if(window._db && window._fs){
-    // _docId はFirestoreのドキュメントID
+  if(window._db){
     const issue=issues.find(i=>i.id===id||i._docId===id);
     if(!issue){alert('課題が見つかりません');return;}
     const docId=issue._docId||id;
     try{
-      await window._fs.updateDoc(
-        window._fs.doc(window._db,'issues',docId),
-        { evals: window._fs.arrayUnion(evalData) }
-      );
+      await window._db.collection('issues').doc(docId).update({
+        evals: firebase.firestore.FieldValue.arrayUnion(evalData)
+      });
     } catch(e){
       console.error('評価保存エラー:',e);
       alert('評価の保存に失敗しました。');
@@ -995,15 +1000,12 @@ async function submitEval(id){
 }
 
 async function changeStatus(id,val){
-  if(window._db && window._fs){
+  if(window._db){
     const issue=issues.find(i=>i.id===id||i._docId===id);
     if(!issue)return;
     const docId=issue._docId||id;
     try{
-      await window._fs.updateDoc(
-        window._fs.doc(window._db,'issues',docId),
-        { status: val }
-      );
+      await window._db.collection('issues').doc(docId).update({ status: val });
     } catch(e){ console.error('ステータス更新エラー:',e); }
   } else {
     const i=issues.find(x=>x.id===id);if(i)i.status=val;
@@ -1012,12 +1014,12 @@ async function changeStatus(id,val){
 
 async function deleteIssue(id){
   if(!confirm('この課題を削除しますか？\nこの操作は取り消せません。')) return;
-  if(window._db && window._fs){
+  if(window._db){
     const issue=issues.find(i=>i.id===id||i._docId===id);
     if(!issue)return;
     const docId=issue._docId||id;
     try{
-      await window._fs.deleteDoc(window._fs.doc(window._db,'issues',docId));
+      await window._db.collection('issues').doc(docId).delete();
     } catch(e){
       console.error('削除エラー:',e);
       alert('削除に失敗しました。');
