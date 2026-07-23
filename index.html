@@ -746,8 +746,8 @@ const STATUS_COLORS=['#9CA3AF','#3B82F6','#D97706','#16A34A','#EF4444'];
 const STATUS_BADGE={'未着手':'b-pending','解決方法協議中':'b-discuss','進行中':'b-inprog','完了':'b-done','保留':'b-hold'};
 const CAT_COLORS={'顧客開拓':'#2A8C5C','商談プロセス':'#D4900A','顧客管理':'#3B82F6','情報共有':'#8B5CF6','スキル・育成':'#EC4899','ツール・システム':'#0EA5E9','管理・報告':'#F97316','その他':'#6B7280'};
 
-let issues=[];
-let nextId=1; // FirestoreではIDは自動生成
+var issues=[];
+var nextId=1; // FirestoreではIDは自動生成
 const evalScores={};
 
 function calcScore(i){
