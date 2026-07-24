@@ -805,7 +805,11 @@ async function submitIssue(){
 }
 
 function updateBadge(){
-  document.getElementById('eval-badge').textContent=issues.filter(i=>!i.evals.length).length;
+  var count=issues.filter(function(i){
+    var eid=i.id||i._docId;
+    return !isEvaluatedByMe(eid);
+  }).length;
+  document.getElementById('eval-badge').textContent=count;
 }
 
 function showView(v,el){
@@ -906,21 +910,32 @@ function renderMatrix(){
     <div style="display:flex;align-items:center;gap:8px"><div style="width:12px;height:12px;border-radius:50%;background:${CAT_COLORS[c]||'#6B7280'};flex-shrink:0"></div><span style="font-size:13px;color:var(--text-secondary)">${c}</span></div>`).join('');
 }
 
+// ── ローカル評価済み記録（個人特定なし、ブラウザ単位） ──
+function getEvaluatedIds(){
+  try{
+    var raw=localStorage.getItem('evaluatedIssueIds');
+    return raw?JSON.parse(raw):[];
+  }catch(e){ return []; }
+}
+function markAsEvaluated(id){
+  try{
+    var list=getEvaluatedIds();
+    if(list.indexOf(id)===-1){ list.push(id); }
+    localStorage.setItem('evaluatedIssueIds', JSON.stringify(list));
+  }catch(e){ console.error('localStorage書き込みエラー:',e); }
+}
+function isEvaluatedByMe(id){
+  return getEvaluatedIds().indexOf(id)!==-1;
+}
+
 function renderEval(){
   var html='';
   issues.forEach(function(issue){
     var eid=issue.id||issue._docId;
     var typeBadge=issue.type==='IT課題'?'it':'nit';
     var catColor=CAT_COLORS[issue.cat]||'#888';
-    var scoreRows='';
-    ['imp','eff','urg'].forEach(function(k,idx){
-      var label=['重要度','影響度','緊急度'][idx];
-      var pills='';
-      [1,2,3,4,5].forEach(function(n){
-        pills+='<button class="pill" onclick="setEvalScore(&quot;'+eid+'&quot;,&quot;'+k+'&quot;,'+n+')">'+n+'</button>';
-      });
-      scoreRows+='<div class="eval-row"><span class="eval-key">'+label+'</span><div class="pills" id="ev-'+eid+'-'+k+'">'+pills+'</div></div>';
-    });
+    var already=isEvaluatedByMe(eid);
+
     html+='<div class="eval-item">';
     html+='<div class="eval-head">';
     html+='<div style="flex:1;min-width:0">';
@@ -928,6 +943,9 @@ function renderEval(){
     html+='<span style="font-size:11px;color:var(--text-muted)">'+eid+'</span>';
     html+='<span class="badge b-'+typeBadge+'">'+issue.type+'</span>';
     html+='<span class="badge" style="background:'+catColor+'22;color:'+catColor+'">'+issue.cat+'</span>';
+    if(already){
+      html+='<span class="badge" style="background:#DCFCE7;color:#15803D">✓ 評価済み</span>';
+    }
     html+='</div>';
     html+='<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:2px">'+issue.name+'</div>';
     html+='<div style="font-size:12px;color:var(--text-muted)">'+(issue.age||'—')+'</div>';
@@ -944,22 +962,41 @@ function renderEval(){
     html+='<div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">現在の状態</div>';
     html+='<div style="font-size:12px;color:var(--text-secondary)">'+(issue.current||'—')+'</div></div>';
     html+='</div>';
-    html+='<div style="border-top:1px solid var(--border-light);padding-top:14px">';
-    html+='<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">あなたの評価スコアを入力してください</div>';
-    html+=scoreRows;
-    html+='<div style="margin-top:12px;margin-bottom:10px">';
-    html+='<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:5px">あなたの年齢層 <span style="color:var(--danger)">*</span></label>';
-    html+='<select class="form-select" id="eval-age-'+eid+'" style="font-size:12px;padding:6px 10px">';
-    html+='<option value="">選択してください</option>';
-    html+='<option value="若手層（〜34歳）">若手層（〜34歳）</option>';
-    html+='<option value="中堅層（35〜49歳）">中堅層（35〜49歳）</option>';
-    html+='<option value="ベテラン層（50〜59歳）">ベテラン層（50〜59歳）</option>';
-    html+='<option value="シニア層（60歳〜）">シニア層（60歳〜）</option>';
-    html+='</select></div>';
-    html+='<button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="submitEval(&quot;'+eid+'&quot;)">';
-    html+='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
-    html+=' 評価を送信</button>';
-    html+='</div></div></div>';
+
+    if(already){
+      html+='<div style="border-top:1px solid var(--border-light);padding-top:14px;text-align:center;padding-bottom:6px">';
+      html+='<div style="display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:13px">';
+      html+='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+      html+='あなたはこの課題を評価済みです</div>';
+      html+='</div>';
+    } else {
+      var scoreRows='';
+      ['imp','eff','urg'].forEach(function(k,idx){
+        var label=['重要度','影響度','緊急度'][idx];
+        var pills='';
+        [1,2,3,4,5].forEach(function(n){
+          pills+='<button class="pill" onclick="setEvalScore(&quot;'+eid+'&quot;,&quot;'+k+'&quot;,'+n+')">'+n+'</button>';
+        });
+        scoreRows+='<div class="eval-row"><span class="eval-key">'+label+'</span><div class="pills" id="ev-'+eid+'-'+k+'">'+pills+'</div></div>';
+      });
+      html+='<div style="border-top:1px solid var(--border-light);padding-top:14px">';
+      html+='<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">あなたの評価スコアを入力してください</div>';
+      html+=scoreRows;
+      html+='<div style="margin-top:12px;margin-bottom:10px">';
+      html+='<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:5px">あなたの年齢層 <span style="color:var(--danger)">*</span></label>';
+      html+='<select class="form-select" id="eval-age-'+eid+'" style="font-size:12px;padding:6px 10px">';
+      html+='<option value="">選択してください</option>';
+      html+='<option value="若手層（〜34歳）">若手層（〜34歳）</option>';
+      html+='<option value="中堅層（35〜49歳）">中堅層（35〜49歳）</option>';
+      html+='<option value="ベテラン層（50〜59歳）">ベテラン層（50〜59歳）</option>';
+      html+='<option value="シニア層（60歳〜）">シニア層（60歳〜）</option>';
+      html+='</select></div>';
+      html+='<button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="submitEval(&quot;'+eid+'&quot;)">';
+      html+='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+      html+=' 評価を送信</button>';
+      html+='</div>';
+    }
+    html+='</div></div>';
   });
   document.getElementById('eval-list').innerHTML=html;
 }
@@ -995,6 +1032,7 @@ async function submitEval(id){
     if(issue){issue.evals.push(evalData);}
     renderEval(); updateBadge();
   }
+  markAsEvaluated(id);
   delete evalScores[id];
   renderEval(); updateBadge();
 }
