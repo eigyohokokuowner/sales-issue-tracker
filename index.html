@@ -784,7 +784,8 @@ async function submitIssue(){
   };
   if(window._db){
     try{
-      await window._db.collection('issues').add(newIssue);
+      const docRef=await window._db.collection('issues').add(newIssue);
+      markAsMyIssue(docRef.id);
     } catch(e){
       console.error('Firestore保存エラー:',e);
       alert('保存に失敗しました。');
@@ -793,6 +794,7 @@ async function submitIssue(){
   } else {
     const id=String(issues.length+1).padStart(3,'0');
     issues.push(Object.assign({id},newIssue,{evals:[]}));
+    markAsMyIssue(id);
     renderDash(); renderList(); updateBadge();
   }
   ['f-name','f-ideal','f-current','f-action'].forEach(id=>document.getElementById(id).value='');
@@ -807,7 +809,7 @@ async function submitIssue(){
 function updateBadge(){
   var count=issues.filter(function(i){
     var eid=i.id||i._docId;
-    return !isEvaluatedByMe(eid);
+    return !isEvaluatedByMe(eid) && !isMyIssue(eid);
   }).length;
   document.getElementById('eval-badge').textContent=count;
 }
@@ -928,6 +930,24 @@ function isEvaluatedByMe(id){
   return getEvaluatedIds().indexOf(id)!==-1;
 }
 
+// ── ローカル登録済み記録（自分が登録した課題を判別） ──
+function getMyIssueIds(){
+  try{
+    var raw=localStorage.getItem('myIssueIds');
+    return raw?JSON.parse(raw):[];
+  }catch(e){ return []; }
+}
+function markAsMyIssue(id){
+  try{
+    var list=getMyIssueIds();
+    if(list.indexOf(id)===-1){ list.push(id); }
+    localStorage.setItem('myIssueIds', JSON.stringify(list));
+  }catch(e){ console.error('localStorage書き込みエラー:',e); }
+}
+function isMyIssue(id){
+  return getMyIssueIds().indexOf(id)!==-1;
+}
+
 function renderEval(){
   var html='';
   issues.forEach(function(issue){
@@ -935,6 +955,7 @@ function renderEval(){
     var typeBadge=issue.type==='IT課題'?'it':'nit';
     var catColor=CAT_COLORS[issue.cat]||'#888';
     var already=isEvaluatedByMe(eid);
+    var mine=isMyIssue(eid);
 
     html+='<div class="eval-item">';
     html+='<div class="eval-head">';
@@ -943,7 +964,9 @@ function renderEval(){
     html+='<span style="font-size:11px;color:var(--text-muted)">'+eid+'</span>';
     html+='<span class="badge b-'+typeBadge+'">'+issue.type+'</span>';
     html+='<span class="badge" style="background:'+catColor+'22;color:'+catColor+'">'+issue.cat+'</span>';
-    if(already){
+    if(mine){
+      html+='<span class="badge" style="background:#EDE9FE;color:#6D28D9">自分の登録課題</span>';
+    } else if(already){
       html+='<span class="badge" style="background:#DCFCE7;color:#15803D">✓ 評価済み</span>';
     }
     html+='</div>';
@@ -963,7 +986,13 @@ function renderEval(){
     html+='<div style="font-size:12px;color:var(--text-secondary)">'+(issue.current||'—')+'</div></div>';
     html+='</div>';
 
-    if(already){
+    if(mine){
+      html+='<div style="border-top:1px solid var(--border-light);padding-top:14px;text-align:center;padding-bottom:6px">';
+      html+='<div style="display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:13px">';
+      html+='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+      html+='自分が登録した課題は評価できません</div>';
+      html+='</div>';
+    } else if(already){
       html+='<div style="border-top:1px solid var(--border-light);padding-top:14px;text-align:center;padding-bottom:6px">';
       html+='<div style="display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:13px">';
       html+='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
